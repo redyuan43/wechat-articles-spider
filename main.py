@@ -17,19 +17,18 @@ class WeChatArticleCrawler:
         self.h.ignore_links = False
         self.h.bypass_tables = False
 
-        # 设置请求头模拟浏览器访问
+        # 请求头
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Referer': 'https://mp.weixin.qq.com/'
         }
 
     def get_safe_title(self, title):
-        """生成安全的文件夹名称"""
-        safe_title = re.sub(r'[\\/*?:"<>|]', '', title)[:50]  # 缩短长度避免路径过长
+        safe_title = re.sub(r'[\\/*?:"<>|]', '', title)[:50]
         return safe_title.strip()
 
+    # 下载并保存微信公众号图片到文章对应的图片目录
     def download_wechat_image(self, img_url, article_image_dir):
-        """下载并保存微信公众号图片到文章对应的图片目录"""
         try:
             # 微信图片特殊处理
             if 'mmbiz.qpic.cn' in img_url:
@@ -79,7 +78,6 @@ class WeChatArticleCrawler:
         return None
 
     def extract_real_image_url(self, img_element):
-        """提取真实的图片URL"""
         # 尝试多种可能的属性
         for attr in ['data-src', 'src', 'data-original', 'data-wx-src']:
             img_url = img_element.get(attr)
@@ -98,7 +96,7 @@ class WeChatArticleCrawler:
         return None
 
     def process_article(self, url):
-        """处理单篇文章"""
+        # 处理单篇文章
         try:
             print(f"\n开始处理文章: {url}")
 
@@ -171,15 +169,24 @@ class WeChatArticleCrawler:
             print(f"处理文章 {url} 时出错: {e}")
             return None
 
+    def read_urls_from_file(self, file_path='urls.txt'):
+        # 从文本文件读取URL列表
+        with open(file_path, 'r', encoding='utf-8') as f:
+            urls = [line.strip() for line in f if line.strip()]
+        return urls
+
 
 if __name__ == "__main__":
     # 使用示例
     crawler = WeChatArticleCrawler()
 
-    # 微信公众号文章URL列表
-    article_urls = [
-        '实际文章地址',
-    ]
+    # 从urls.txt文件读取URL列表
+    try:
+        article_urls = crawler.read_urls_from_file('urls.txt')
+        print(f"从文件读取到 {len(article_urls)} 个URL")
+    except FileNotFoundError:
+        print("未找到urls.txt文件，请创建该文件并每行放入一个URL")
+        exit()
 
     for url in article_urls:
         crawler.process_article(url)
