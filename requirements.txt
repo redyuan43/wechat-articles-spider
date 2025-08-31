@@ -1,0 +1,6 @@
+watchdog>=6.0.0
+flask>=3.1.0
+requests>=2.31.0
+beautifulsoup4>=4.13.0
+html2text>=2024.2.26
+jieba>=0.42.1
