@@ -19,7 +19,7 @@ from typing import List
 # 检查并安装依赖
 def install_dependencies():
     """检查并安装必要的依赖"""
-    required = ['watchdog', 'flask', 'requests', 'beautifulsoup4', 'html2text', 'jieba']
+    required = ['flask', 'requests', 'beautifulsoup4', 'html2text', 'jieba']
     missing = []
     
     for pkg in required:
@@ -42,8 +42,6 @@ def install_dependencies():
 if not install_dependencies():
     sys.exit(1)
 
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 from flask import Flask, render_template_string, jsonify
 from wechat_crawler import WeChatArticleAdvancedCrawler
 
@@ -174,27 +172,44 @@ class SimpleNASService:
         except Exception as e:
             self.logger.error(f"❌ 清空文件失败: {e}")
 
-class URLFileHandler(FileSystemEventHandler):
+class URLFileChecker:
     def __init__(self, service):
         self.service = service
-        self.last_modified = 0
+        self.last_size = 0
+        self.checking = False
     
-    def on_modified(self, event):
-        if event.is_directory:
-            return
-        
-        if event.src_path.endswith(self.service.config['urls_file']):
-            # 防止重复触发
-            current_time = time.time()
-            if current_time - self.last_modified < 2:
-                return
-            self.last_modified = current_time
-            
-            # 等待文件写入完成
-            time.sleep(1)
-            
-            # 处理文件
-            threading.Thread(target=self.service.process_urls_file, daemon=True).start()
+    def check_file_not_empty(self):
+        """检查文件是否非空"""
+        try:
+            urls_file = self.service.config['urls_file']
+            if os.path.exists(urls_file):
+                file_size = os.path.getsize(urls_file)
+                return file_size > 0
+            return False
+        except Exception as e:
+            self.service.logger.error(f"❌ 检查文件大小失败: {e}")
+            return False
+    
+    def start_checking(self):
+        """开始定期检查文件"""
+        self.checking = True
+        while self.checking:
+            try:
+                if self.check_file_not_empty():
+                    # 文件不为空，处理URLs
+                    threading.Thread(target=self.service.process_urls_file, daemon=True).start()
+                    # 等待处理完成后再继续检查
+                    time.sleep(5)
+                else:
+                    # 文件为空，正常等待
+                    time.sleep(self.service.config['check_interval'])
+            except Exception as e:
+                self.service.logger.error(f"❌ 文件检查异常: {e}")
+                time.sleep(self.service.config['check_interval'])
+    
+    def stop_checking(self):
+        """停止检查"""
+        self.checking = False
 
 def create_web_app(service):
     """创建Web界面"""
@@ -389,12 +404,11 @@ def main():
         print(f"📁 输出目录: {os.path.abspath(service.config['output_dir'])}")
         print(f"🌐 Web端口: {service.config['web_port']}")
         
-        # 设置文件监听
-        event_handler = URLFileHandler(service)
-        observer = Observer()
-        observer.schedule(event_handler, ".", recursive=False)
-        observer.start()
-        service.logger.info("👀 文件监听已启动")
+        # 设置文件定期检查
+        file_checker = URLFileChecker(service)
+        checker_thread = threading.Thread(target=file_checker.start_checking, daemon=True)
+        checker_thread.start()
+        service.logger.info("👀 文件定期检查已启动")
         
         # 启动Web界面
         app = create_web_app(service)
@@ -424,10 +438,8 @@ def main():
                 time.sleep(1)
         except KeyboardInterrupt:
             print("\n👋 正在停止服务...")
-            observer.stop()
+            file_checker.stop_checking()
             service.logger.info("服务已停止")
-        
-        observer.join()
         
     except Exception as e:
         print(f"❌ 服务启动失败: {e}")
